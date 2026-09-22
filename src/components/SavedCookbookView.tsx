@@ -66,6 +66,12 @@ export const SavedCookbookView: React.FC<SavedCookbookViewProps> = ({
 
                   <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap max-w-[calc(100%-3.5rem)]">
                     <DifficultyBadge difficulty={recipe.difficulty} size="sm" />
+                    {recipe.source === 'photo-generated' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ffdad2] text-[#8c3d2b] text-[10px] font-bold shadow-2xs">
+                        <span className="material-symbols-outlined text-[12px]">soup_kitchen</span>
+                        <span>Photo Recipe</span>
+                      </span>
+                    )}
                     <span className="px-2 py-0.5 rounded-full bg-[#ffffff]/90 text-[#1c1c18] text-[10px] font-bold">
                       {recipe.totalTime}
                     </span>

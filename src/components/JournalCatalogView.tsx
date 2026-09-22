@@ -19,12 +19,18 @@ export const JournalCatalogView: React.FC<JournalCatalogViewProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [activeDifficulty, setActiveDifficulty] = useState<string>('All');
 
-  const categories = ['All', 'Skillet', 'Pasta', 'Seafood', 'Baking'];
+  const hasPhotoRecipes = recipes.some((r) => r.source === 'photo-generated');
+  const categories = hasPhotoRecipes
+    ? ['All', 'From Photos', 'Skillet', 'Pasta', 'Seafood', 'Baking']
+    : ['All', 'Skillet', 'Pasta', 'Seafood', 'Baking'];
   const difficultyOptions: ('All' | DifficultyLevel)[] = ['All', 'Easy', 'Medium', 'Hard'];
 
   const filteredRecipes = recipes.filter((recipe) => {
     const matchesCategory =
-      activeCategory === 'All' || recipe.category === activeCategory;
+      activeCategory === 'All' ||
+      (activeCategory === 'From Photos'
+        ? recipe.source === 'photo-generated'
+        : recipe.category === activeCategory);
     const matchesDifficulty =
       activeDifficulty === 'All' || recipe.difficulty === activeDifficulty;
     const matchesSearch =
@@ -194,6 +200,12 @@ export const JournalCatalogView: React.FC<JournalCatalogViewProps> = ({
                   {/* Top Left Badges: Difficulty Badge + Total Time + Match */}
                   <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap max-w-[calc(100%-3.5rem)]">
                     <DifficultyBadge difficulty={recipe.difficulty} size="sm" />
+                    {recipe.source === 'photo-generated' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#ffdad2] text-[#8c3d2b] text-[10px] font-bold shadow-2xs">
+                        <span className="material-symbols-outlined text-[12px]">soup_kitchen</span>
+                        <span>Photo Recipe</span>
+                      </span>
+                    )}
                     <span className="px-2 py-0.5 rounded-full bg-[#ffffff]/90 text-[#1c1c18] text-[10px] font-bold shadow-2xs backdrop-blur-xs">
                       {recipe.totalTime}
                     </span>

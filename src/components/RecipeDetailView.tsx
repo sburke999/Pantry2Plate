@@ -246,6 +246,28 @@ export const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({
 
         {/* Editorial Title & Intro */}
         <div className="px-4 pt-2 pb-5">
+          {recipe.source === 'photo-generated' && (
+            <div className="mb-3 px-3.5 py-2 rounded-xl bg-[#ffdad2]/60 border border-[#8c3d2b]/25 flex items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#8c3d2b] text-[18px]">
+                  auto_awesome
+                </span>
+                <span className="text-xs font-semibold text-[#8c3d2b]">
+                  Recipe crafted from {recipe.createdFromPhotoTitle || 'pantry photo'}
+                </span>
+              </div>
+              {onPantryBadgeClick && (
+                <button
+                  onClick={onPantryBadgeClick}
+                  className="text-[11px] text-[#8c3d2b] font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <span>Pantry</span>
+                  <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-[#8c3d2b] font-bold text-[10px] uppercase tracking-wider mb-1">
             <span>{recipe.series}</span>
             <span>•</span>

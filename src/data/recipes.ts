@@ -43,6 +43,8 @@ export interface Recipe {
   steps: CookingStep[];
   isFeatured?: boolean;
   category: 'Skillet' | 'Pasta' | 'Seafood' | 'Baking' | 'Pantry Staples';
+  source?: 'journal' | 'photo-generated';
+  createdFromPhotoTitle?: string;
 }
 
 export const SAVOR_RECIPES: Recipe[] = [

@@ -11,6 +11,7 @@ interface PantryViewProps {
   recipes: Recipe[];
   onSelectRecipe: (recipe: Recipe) => void;
   onNotification?: (message: string, icon?: string) => void;
+  onRecipeGenerated?: (recipe: Recipe) => void;
 }
 
 export const PantryView: React.FC<PantryViewProps> = ({
@@ -21,6 +22,7 @@ export const PantryView: React.FC<PantryViewProps> = ({
   recipes,
   onSelectRecipe,
   onNotification,
+  onRecipeGenerated,
 }) => {
   const [activeTabSection, setActiveTabSection] = useState<'all' | 'photo' | 'manual'>('all');
 
@@ -112,6 +114,7 @@ export const PantryView: React.FC<PantryViewProps> = ({
           currentPantryItems={selectedPantryItems}
           onAddPantryItems={onAddPantryItems}
           onNotification={onNotification}
+          onRecipeGenerated={onRecipeGenerated}
         />
       )}
 
@@ -255,6 +258,12 @@ export const PantryView: React.FC<PantryViewProps> = ({
 
                   <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap max-w-[calc(100%-1.5rem)]">
                     <DifficultyBadge difficulty={item.difficulty} size="sm" />
+                    {item.source === 'photo-generated' && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm bg-[#ffdad2] text-[#8c3d2b]">
+                        <span className="material-symbols-outlined text-[13px]">soup_kitchen</span>
+                        <span>Photo Recipe</span>
+                      </span>
+                    )}
                     <span
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-sm ${
                         item.liveMatch === 100

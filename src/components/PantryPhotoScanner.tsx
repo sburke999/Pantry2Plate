@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { PANTRY_INGREDIENTS } from '../data/recipes';
+import { Recipe, PANTRY_INGREDIENTS, DifficultyLevel } from '../data/recipes';
+import { DifficultyBadge } from './DifficultyBadge';
 import { soundFx } from '../utils/audio';
 
 export interface PantryPhotoItem {
@@ -20,6 +21,7 @@ interface PantryPhotoScannerProps {
   currentPantryItems: string[];
   onAddPantryItems: (items: string[]) => void;
   onNotification?: (message: string, icon?: string) => void;
+  onRecipeGenerated?: (recipe: Recipe) => void;
 }
 
 // Sample presets for instant testing
@@ -58,6 +60,7 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
   currentPantryItems,
   onAddPantryItems,
   onNotification,
+  onRecipeGenerated,
 }) => {
   // Photos stored in the user's pantry history
   const [photoHistory, setPhotoHistory] = useState<PantryPhotoItem[]>(() => {
@@ -92,6 +95,18 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [previewModalPhoto, setPreviewModalPhoto] = useState<PantryPhotoItem | null>(null);
 
+  // Recipe Crafting State
+  const [showCraftModal, setShowCraftModal] = useState(false);
+  const [craftSource, setCraftSource] = useState<{
+    imageUrl: string;
+    title: string;
+    ingredients: Array<{ name: string; selected: boolean }>;
+  } | null>(null);
+  const [craftMealStyle, setCraftMealStyle] = useState<string>('Artisanal Skillet');
+  const [craftDifficulty, setCraftDifficulty] = useState<DifficultyLevel>('Medium');
+  const [isCraftingRecipe, setIsCraftingRecipe] = useState(false);
+  const [craftStatusText, setCraftStatusText] = useState('Gathering photo ingredients...');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -101,6 +116,160 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
       localStorage.setItem('savor_pantry_photos', JSON.stringify(photos));
     } catch {
       // ignore
+    }
+  };
+
+  const handleOpenCraftModal = (
+    imageUrl: string,
+    title: string,
+    initialIngredients: Array<{ name: string; selected?: boolean }>
+  ) => {
+    soundFx.playTactileClick();
+    setCraftSource({
+      imageUrl,
+      title,
+      ingredients: initialIngredients.map((ing) => ({
+        name: ing.name,
+        selected: ing.selected !== undefined ? ing.selected : true,
+      })),
+    });
+    setShowCraftModal(true);
+  };
+
+  const toggleCraftIngredient = (idx: number) => {
+    soundFx.playTactileClick();
+    if (!craftSource) return;
+    setCraftSource({
+      ...craftSource,
+      ingredients: craftSource.ingredients.map((ing, i) =>
+        i === idx ? { ...ing, selected: !ing.selected } : ing
+      ),
+    });
+  };
+
+  const handleExecuteCraftRecipe = async () => {
+    if (!craftSource) return;
+    const selectedIngs = craftSource.ingredients.filter((i) => i.selected).map((i) => i.name);
+    if (selectedIngs.length === 0) {
+      if (onNotification) onNotification('Please select at least 1 ingredient to cook with', 'info');
+      return;
+    }
+
+    soundFx.playTactileClick();
+    setIsCraftingRecipe(true);
+    setCraftStatusText('Reviewing photographed ingredients...');
+
+    const stepTimer1 = setTimeout(() => {
+      setCraftStatusText('Formulating skillet pairings & thermal method...');
+    }, 700);
+
+    const stepTimer2 = setTimeout(() => {
+      setCraftStatusText('Structuring mise en place, timers & chef wisdom...');
+    }, 1400);
+
+    try {
+      const res = await fetch('/api/generate-recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredients: selectedIngs,
+          mealStyle: craftMealStyle,
+          difficulty: craftDifficulty,
+          photoTitle: craftSource.title,
+          photoUrl: craftSource.imageUrl,
+        }),
+      });
+
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+
+      let generatedRecipe: Recipe | null = null;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.recipe) {
+          generatedRecipe = data.recipe;
+        }
+      }
+
+      // If API route failed or returned empty, generate procedural recipe
+      if (!generatedRecipe) {
+        generatedRecipe = {
+          id: `recipe-photo-${Date.now()}`,
+          series: 'Photo Pantry Creation',
+          seriesNumber: `No. P-${Math.floor(10 + Math.random() * 89)}`,
+          title: `${selectedIngs[0] || 'Market'} & ${selectedIngs[1] || 'Herbs'} Rustic ${craftMealStyle.replace('Artisanal ', '')}`,
+          description: `An artisanal culinary creation crafted specifically from ingredients photographed in your ${craftSource.title.toLowerCase()}. Sizzled in heavy cast iron to coax deep caramelized sweetness and aromatic warmth.`,
+          heroImage: craftSource.imageUrl || '/src/assets/images/fridge_crisper_shelf_1790108743704.jpg',
+          altText: 'Custom culinary creation from photographed ingredients',
+          matchPercentage: 100,
+          difficulty: craftDifficulty,
+          totalSteps: 3,
+          totalTime: craftDifficulty === 'Easy' ? '15 mins' : craftDifficulty === 'Medium' ? '24 mins' : '35 mins',
+          baseServings: 2,
+          servingUnit: 'Portions',
+          method: 'Sizzling Cast Iron',
+          category: 'Skillet',
+          source: 'photo-generated',
+          createdFromPhotoTitle: craftSource.title,
+          ingredients: selectedIngs.map((name, i) => ({
+            id: `craft-ing-${i}-${Date.now()}`,
+            name,
+            baseQty: i === 0 ? 3 : i === 1 ? 1 : 2,
+            unit: i === 0 ? 'units' : i === 1 ? 'cup' : 'tbsp',
+            note: i === 0 ? 'freshly prepared' : 'roughly chopped',
+            pantryCategory: name,
+          })),
+          pantryBasics: ['Flaky Maldon salt', 'Fresh cracked pepper', 'Extra virgin olive oil'],
+          chefTipTitle: 'Carrying Over Pan Heat',
+          chefTipDescription:
+            'Dense cast iron retains tremendous thermal mass. Pull the skillet from the heat just before delicate ingredients finish to let residual heat gently complete the cook.',
+          platingRitual: 'Serve bubbling hot direct from the iron skillet with warm dipping bread and a finishing pinch of sea salt.',
+          steps: [
+            {
+              number: 1,
+              title: 'Warm the Heavy Iron & Bloom Aromatics',
+              subtext: '4 minutes • Gentle sizzle',
+              description: `Bring your seasoned skillet to medium heat with olive oil. Add ${selectedIngs[1] || 'herbs'} and cook until intensely fragrant. A drop of water should sizzle and dance when the pan is ready.`,
+              timerSeconds: 240,
+              timerLabel: 'Preheat & Bloom',
+            },
+            {
+              number: 2,
+              title: `Sear & Caramelize ${selectedIngs[0] || 'Ingredients'}`,
+              subtext: '8 minutes • Steady simmer',
+              description: `Carefully introduce the ${selectedIngs[0] || 'primary ingredients'}. Let them develop golden blistered crusts without moving the pan for the first 3 minutes.`,
+              timerSeconds: 480,
+              timerLabel: 'Sear & Simmer',
+            },
+            {
+              number: 3,
+              title: 'Rest & Finishing Crown',
+              subtext: '3 minutes • Carryover heat',
+              description: `Remove the skillet from direct flame. Season generously with flaky salt and coarse black pepper. Let rest before spooning onto plates.`,
+              timerSeconds: 180,
+              timerLabel: 'Rest Timer',
+            },
+          ],
+        };
+      }
+
+      soundFx.playScanChime();
+      setIsCraftingRecipe(false);
+      setShowCraftModal(false);
+
+      if (generatedRecipe) {
+        if (onRecipeGenerated) {
+          onRecipeGenerated(generatedRecipe);
+        }
+        if (onNotification) {
+          onNotification(`Created: ${generatedRecipe.title}!`, 'restaurant');
+        }
+      }
+    } catch (err) {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
+      setIsCraftingRecipe(false);
+      if (onNotification) onNotification('Failed to generate recipe, please try again', 'error');
     }
   };
 
@@ -524,15 +693,32 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-2 border-t border-[#dbc1bb]/30">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-[#dbc1bb]/30">
                 <button
                   type="button"
-                  disabled={isScanning}
-                  onClick={handleApplyToPantry}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-[#8c3d2b] hover:bg-[#6e2717] text-[#ffffff] font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-98 cursor-pointer"
+                  disabled={isScanning || detectedList.filter((d) => d.selected).length === 0}
+                  onClick={() =>
+                    handleOpenCraftModal(
+                      activePhoto!,
+                      activeTitle,
+                      detectedList.filter((d) => d.selected)
+                    )
+                  }
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#8c3d2b] to-[#6e2717] hover:from-[#7a2f1e] hover:to-[#5c1c0e] text-[#ffffff] font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-98 cursor-pointer disabled:opacity-50"
                 >
-                  <span className="material-symbols-outlined text-[16px]">sync</span>
-                  <span>Sync Detected Items to Active Pantry</span>
+                  <span className="material-symbols-outlined text-[17px]">soup_kitchen</span>
+                  <span>Make Recipe From Photo</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isScanning || detectedList.filter((d) => d.selected).length === 0}
+                  onClick={handleApplyToPantry}
+                  className="py-2.5 px-3.5 rounded-xl bg-[#f6f3ed] hover:bg-[#ebe8e2] text-[#1c1c18] border border-[#dbc1bb]/60 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-98 cursor-pointer disabled:opacity-50"
+                  title="Add items to pantry list"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-[#506354]">sync</span>
+                  <span>Sync Pantry</span>
                 </button>
               </div>
             </div>
@@ -622,29 +808,45 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
                   </div>
                 </div>
 
-                <div className="px-3 pb-2.5 pt-1 border-t border-[#f0eee8] flex items-center justify-between">
+                <div className="px-3 pb-2.5 pt-1.5 border-t border-[#f0eee8] flex items-center justify-between gap-1.5">
                   <button
-                    onClick={() => {
-                      soundFx.playScanChime();
-                      const items = photo.detectedIngredients.map((d) => d.matchedPantryId || d.name);
-                      onAddPantryItems(items);
-                      if (onNotification) {
-                        onNotification(`Re-synced ingredients from "${photo.title}"`, 'sync');
-                      }
-                    }}
-                    className="text-[11px] text-[#8c3d2b] font-semibold hover:underline flex items-center gap-1"
+                    onClick={() =>
+                      handleOpenCraftModal(
+                        photo.imageUrl,
+                        photo.title,
+                        photo.detectedIngredients
+                      )
+                    }
+                    className="px-2.5 py-1 rounded-lg bg-[#ffdad2]/80 hover:bg-[#ffdad2] text-[#8c3d2b] text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Craft custom recipe from this photo's ingredients"
                   >
-                    <span className="material-symbols-outlined text-[13px]">add_circle</span>
-                    <span>Re-apply Items</span>
+                    <span className="material-symbols-outlined text-[14px]">soup_kitchen</span>
+                    <span>Cook Photo</span>
                   </button>
 
-                  <button
-                    onClick={() => setPreviewModalPhoto(photo)}
-                    className="text-[11px] text-[#55433e] hover:text-[#1c1c18] flex items-center gap-0.5"
-                  >
-                    <span>View</span>
-                    <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        soundFx.playScanChime();
+                        const items = photo.detectedIngredients.map((d) => d.matchedPantryId || d.name);
+                        onAddPantryItems(items);
+                        if (onNotification) {
+                          onNotification(`Re-synced ingredients from "${photo.title}"`, 'sync');
+                        }
+                      }}
+                      className="text-[11px] text-[#55433e] hover:text-[#8c3d2b] font-medium p-1 rounded hover:bg-[#f6f3ed] cursor-pointer"
+                      title="Re-apply ingredients to active pantry"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">sync</span>
+                    </button>
+                    <button
+                      onClick={() => setPreviewModalPhoto(photo)}
+                      className="text-[11px] text-[#55433e] hover:text-[#1c1c18] p-1 rounded hover:bg-[#f6f3ed] cursor-pointer"
+                      title="Inspect photo"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -714,37 +916,260 @@ export const PantryPhotoScanner: React.FC<PantryPhotoScannerProps> = ({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#f0eee8] flex items-center justify-between">
+              <div className="pt-3 border-t border-[#f0eee8] flex flex-wrap items-center justify-between gap-2">
                 <button
                   onClick={() => {
                     handleDeleteHistoryPhoto(previewModalPhoto.id);
                     setPreviewModalPhoto(null);
                   }}
-                  className="text-xs text-[#801908] hover:underline font-semibold flex items-center gap-1"
+                  className="text-xs text-[#801908] hover:underline font-semibold flex items-center gap-1 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[15px]">delete</span>
                   <span>Delete Photo</span>
                 </button>
 
-                <button
-                  onClick={() => {
-                    const items = previewModalPhoto.detectedIngredients.map(
-                      (d) => d.matchedPantryId || d.name
-                    );
-                    onAddPantryItems(items);
-                    if (onNotification) {
-                      onNotification(
-                        `Added ingredients from "${previewModalPhoto.title}" to pantry!`,
-                        'verified'
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const photoToCraft = previewModalPhoto;
+                      setPreviewModalPhoto(null);
+                      handleOpenCraftModal(
+                        photoToCraft.imageUrl,
+                        photoToCraft.title,
+                        photoToCraft.detectedIngredients
                       );
-                    }
-                    setPreviewModalPhoto(null);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-[#8c3d2b] text-white text-xs font-semibold hover:bg-[#6e2717]"
-                >
-                  Sync to Active Pantry
-                </button>
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#8c3d2b] to-[#6e2717] text-white text-xs font-semibold hover:opacity-95 flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">soup_kitchen</span>
+                    <span>Make Recipe</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const items = previewModalPhoto.detectedIngredients.map(
+                        (d) => d.matchedPantryId || d.name
+                      );
+                      onAddPantryItems(items);
+                      if (onNotification) {
+                        onNotification(
+                          `Added ingredients from "${previewModalPhoto.title}" to pantry!`,
+                          'verified'
+                        );
+                      }
+                      setPreviewModalPhoto(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#f6f3ed] border border-[#dbc1bb]/60 text-[#1c1c18] text-xs font-semibold hover:bg-[#ebe8e2] cursor-pointer"
+                  >
+                    Sync to Pantry
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Crafting Configuration Modal */}
+      {showCraftModal && craftSource && (
+        <div
+          onClick={() => !isCraftingRecipe && setShowCraftModal(false)}
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#ffffff] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-[#dbc1bb]/50 flex flex-col relative max-h-[90vh]"
+          >
+            {/* Loading / Crafting Overlay */}
+            {isCraftingRecipe && (
+              <div className="absolute inset-0 z-30 bg-[#ffffff]/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+                <div className="w-16 h-16 rounded-full bg-[#ffdad2] text-[#8c3d2b] flex items-center justify-center mb-4 shadow-sm relative">
+                  <span className="material-symbols-outlined text-[32px] animate-spin">
+                    skillet
+                  </span>
+                  <div className="absolute -inset-1 rounded-full border-2 border-dashed border-[#8c3d2b] animate-spin"></div>
+                </div>
+
+                <h4 className="font-serif text-xl font-semibold text-[#1c1c18]">
+                  Crafting Artisanal Recipe...
+                </h4>
+                <p className="text-xs text-[#8c3d2b] font-medium mt-2 animate-pulse">
+                  {craftStatusText}
+                </p>
+                <p className="text-[11px] text-[#55433e] mt-1 max-w-xs">
+                  Pairing your photographed ingredients with cast iron technique, custom measurements & active timers.
+                </p>
+              </div>
+            )}
+
+            {/* Modal Header Strip */}
+            <div className="p-4 bg-[#fcf9f3] border-b border-[#dbc1bb]/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#ffdad2] text-[#8c3d2b] flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[18px]">soup_kitchen</span>
+                </div>
+                <div>
+                  <h4 className="font-serif text-lg font-semibold text-[#1c1c18] leading-tight">
+                    Make Recipe From Photo
+                  </h4>
+                  <p className="text-[11px] text-[#55433e]">
+                    Formulate a dish using ingredients from your photographed {craftSource.title}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                disabled={isCraftingRecipe}
+                onClick={() => setShowCraftModal(false)}
+                className="w-8 h-8 rounded-full text-[#88726d] hover:text-[#1c1c18] hover:bg-[#f0eee8] flex items-center justify-center cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex flex-col gap-4">
+              {/* Photo Preview Strip */}
+              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-[#f6f3ed] border border-[#dbc1bb]/40">
+                <div className="w-16 h-16 rounded-lg overflow-hidden bg-black/20 flex-shrink-0">
+                  <img
+                    src={craftSource.imageUrl}
+                    alt={craftSource.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-[#8c3d2b]">
+                    Source Photo
+                  </span>
+                  <h5 className="text-sm font-semibold text-[#1c1c18] truncate">
+                    {craftSource.title}
+                  </h5>
+                  <p className="text-xs text-[#55433e]">
+                    {craftSource.ingredients.filter((i) => i.selected).length} ingredients selected to cook
+                  </p>
+                </div>
+              </div>
+
+              {/* Photographed Ingredients Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#55433e] flex items-center gap-1.5">
+                    <span>Photographed Ingredients</span>
+                    <span className="text-[11px] font-normal text-[#88726d]">
+                      (Tap to include or exclude)
+                    </span>
+                  </label>
+                  <span className="text-xs text-[#8c3d2b] font-semibold">
+                    {craftSource.ingredients.filter((i) => i.selected).length} Included
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {craftSource.ingredients.map((ing, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => toggleCraftIngredient(idx)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all select-none border cursor-pointer ${
+                        ing.selected
+                          ? 'bg-[#506354] text-[#ffffff] border-[#506354] shadow-2xs'
+                          : 'bg-[#f6f3ed] text-[#88726d] border-[#dbc1bb]/50 line-through opacity-70'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">
+                        {ing.selected ? 'check' : 'add'}
+                      </span>
+                      <span>{ing.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Meal Style Selector */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#55433e] block mb-2">
+                  Culinary Cooking Style
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { id: 'Artisanal Skillet', label: 'Artisanal Skillet', icon: 'skillet' },
+                    { id: 'Rustic Pasta & Grains', label: 'Rustic Pasta', icon: 'ramen_dining' },
+                    { id: 'Warm Breakfast Pan', label: 'Breakfast Pan', icon: 'wb_sunny' },
+                    { id: 'Quick 15-Minute Skillet', label: '15-Min Express', icon: 'timer' },
+                    { id: "Chef's Surprise", label: "Chef's Surprise", icon: 'auto_awesome' },
+                  ].map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      onClick={() => {
+                        soundFx.playTactileClick();
+                        setCraftMealStyle(style.id);
+                      }}
+                      className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all text-left cursor-pointer ${
+                        craftMealStyle === style.id
+                          ? 'bg-[#8c3d2b] text-[#ffffff] border-[#8c3d2b] shadow-xs'
+                          : 'bg-[#fcf9f3] text-[#1c1c18] border-[#dbc1bb]/50 hover:bg-[#f6f3ed]'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[16px]">{style.icon}</span>
+                      <span className="truncate">{style.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Difficulty Level */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-[#55433e] block mb-2">
+                  Difficulty Level
+                </label>
+                <div className="flex gap-2">
+                  {(['Easy', 'Medium', 'Hard'] as DifficultyLevel[]).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => {
+                        soundFx.playTactileClick();
+                        setCraftDifficulty(level);
+                      }}
+                      className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                        craftDifficulty === level
+                          ? 'bg-[#ffffff] text-[#1c1c18] border-[#8c3d2b] shadow-xs ring-1 ring-[#8c3d2b]'
+                          : 'bg-[#f6f3ed] text-[#55433e] border-[#dbc1bb]/40 hover:bg-[#ebe8e2]'
+                      }`}
+                    >
+                      <DifficultyBadge difficulty={level} size="sm" />
+                      <span>{level}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-[#fcf9f3] border-t border-[#dbc1bb]/40 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={isCraftingRecipe}
+                onClick={() => setShowCraftModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[#55433e] hover:text-[#1c1c18] cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  isCraftingRecipe ||
+                  craftSource.ingredients.filter((i) => i.selected).length === 0
+                }
+                onClick={handleExecuteCraftRecipe}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#8c3d2b] to-[#6e2717] hover:from-[#7a2f1e] hover:to-[#5c1c0e] text-[#ffffff] font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 cursor-pointer disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+                <span>Craft Artisanal Recipe Now</span>
+              </button>
             </div>
           </div>
         </div>

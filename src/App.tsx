@@ -14,8 +14,24 @@ export default function App() {
   // Navigation tabs: 'recipe' | 'catalog' | 'pantry' | 'saved'
   const [currentTab, setCurrentTab] = useState<'recipe' | 'catalog' | 'pantry' | 'saved'>('recipe');
 
+  // All recipes (built-in monograph + user generated recipes from photos)
+  const [allRecipes, setAllRecipes] = useState<Recipe[]>(() => {
+    try {
+      const stored = localStorage.getItem('savor_custom_recipes');
+      if (stored) {
+        const custom: Recipe[] = JSON.parse(stored);
+        const customIds = new Set(custom.map((c) => c.id));
+        const defaultFiltered = SAVOR_RECIPES.filter((r) => !customIds.has(r.id));
+        return [...custom, ...defaultFiltered];
+      }
+    } catch {
+      // fallback
+    }
+    return SAVOR_RECIPES;
+  });
+
   // Currently viewed recipe (defaults to the flagship Shakshuka)
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe>(SAVOR_RECIPES[0]);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe>(allRecipes[0] || SAVOR_RECIPES[0]);
 
   // Saved / bookmarked recipe IDs
   const [savedRecipeIds, setSavedRecipeIds] = useState<string[]>(() => {
@@ -120,6 +136,29 @@ export default function App() {
     setIsCookModeOpen(true);
   };
 
+  const handleAddGeneratedRecipe = (newRecipe: Recipe) => {
+    setAllRecipes((prev) => {
+      const filtered = prev.filter((r) => r.id !== newRecipe.id);
+      const updated = [newRecipe, ...filtered];
+      try {
+        const customOnly = updated.filter((r) => r.source === 'photo-generated');
+        localStorage.setItem('savor_custom_recipes', JSON.stringify(customOnly));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+
+    // Auto-save this crafted recipe into user bookmarks
+    setSavedRecipeIds((prev) => (prev.includes(newRecipe.id) ? prev : [newRecipe.id, ...prev]));
+
+    // Navigate directly to the recipe detail view
+    setSelectedRecipe(newRecipe);
+    setCurrentTab('recipe');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(`Created: ${newRecipe.title}`, 'soup_kitchen');
+  };
+
   // Dynamic header title based on current screen
   const getHeaderTitle = () => {
     switch (currentTab) {
@@ -174,7 +213,7 @@ export default function App() {
 
         {currentTab === 'catalog' && (
           <JournalCatalogView
-            recipes={SAVOR_RECIPES}
+            recipes={allRecipes}
             onSelectRecipe={handleSelectRecipe}
             savedRecipeIds={savedRecipeIds}
             onToggleSave={toggleSaveRecipe}
@@ -187,16 +226,17 @@ export default function App() {
             onTogglePantryItem={togglePantryItem}
             onAddPantryItems={handleAddPantryItems}
             onClearPantryItems={handleClearPantryItems}
-            recipes={SAVOR_RECIPES}
+            recipes={allRecipes}
             onSelectRecipe={handleSelectRecipe}
             onNotification={showToast}
+            onRecipeGenerated={handleAddGeneratedRecipe}
           />
         )}
 
         {currentTab === 'saved' && (
           <SavedCookbookView
             savedRecipeIds={savedRecipeIds}
-            recipes={SAVOR_RECIPES}
+            recipes={allRecipes}
             onSelectRecipe={handleSelectRecipe}
             onToggleSave={toggleSaveRecipe}
             onExploreJournal={() => setCurrentTab('catalog')}
