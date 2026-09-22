@@ -1,0 +1,6 @@
+{
+  "name": "Savor Culinary Journal",
+  "description": "Artisanal culinary journal featuring pantry-matched recipes, interactive mise en place, kitchen timers, and hands-free voice cook mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
